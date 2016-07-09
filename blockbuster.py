@@ -43,6 +43,8 @@ TILES_TO_BE_RESET = []  # board tiles which will be reset (e.g. part of a color 
 BLOCKS_TO_BE_FIXATED = []  # list of blocks which have stopped moving and will be fixated on the board
 DIRTY_ROWS = []  # list of rows which need to be checked for matches
 DIRTY_COLUMNS = []  # list of columns which need to be checked for matches
+DIRTY_DIAG_NE = []  # coordinates which will be checked diagonally in north-east direction
+DIRTY_DIAG_NW = [] # coordinates which will be checked diagonally in north-west direction
 
 # layout variables
 BLOCK_SIZE = 20  # block size in pixels
@@ -181,6 +183,18 @@ def is_vacant_tile(coordinate):
 
     # empty tile?
     return BOARD[coordinate[0]][coordinate[1]].color == BLACK
+
+
+def find_furthest_diagonal_point(starting_point, direction):
+    current = starting_point[:]
+    last_valid_coordinate = None
+    in_bounds = is_within_bounds(current)
+    while in_bounds:
+        last_valid_coordinate = current[:]
+        current[0] += direction[0]
+        current[1] += direction[1]
+        in_bounds = is_within_bounds(current)
+    return last_valid_coordinate
 
 
 def load_high_scores():
@@ -480,11 +494,12 @@ def stop_game():
     pygame.quit()
     sys.exit(0)
 
-def mark_matches(index=0, vertical=True):
+
+def mark_matches(starting_point=0, direction=(1, 0)):
+    '''Check for grouping of four in a given direction.'''
     global BOARD
     current_color = None
     current_streak = []
-    # marked_tiles = []
 
     def flush_streak():
         global TILES_TO_BE_RESET, FADING_TILES
@@ -494,13 +509,12 @@ def mark_matches(index=0, vertical=True):
         current_streak = []
 
     # sweep from top to bottom or left to right
-    range_to_check = range(BOARD_HEIGHT) if vertical else range(BOARD_WIDTH)
+    # range_to_check = range(BOARD_HEIGHT) if vertical else range(BOARD_WIDTH)
 
-    for current in range_to_check:
-        tile_to_check = BOARD[index][current] if vertical else BOARD[current][index]
-
-        # check if it's the last piece in a row or column (which always breaks the streak)
-        is_last = (current == BOARD_HEIGHT - 1) if vertical else (current == BOARD_WIDTH - 1)
+    coordinate_to_check = starting_point[:]
+    in_bounds = is_within_bounds(coordinate_to_check)
+    while in_bounds:
+        tile_to_check = BOARD[coordinate_to_check[0]][coordinate_to_check[1]]
 
         if tile_to_check.color != BLACK:
             if current_color is None or current_color != tile_to_check.color:  # color does not match the previous one
@@ -508,10 +522,33 @@ def mark_matches(index=0, vertical=True):
                 current_color = tile_to_check.color
             current_streak.append(tile_to_check)
 
-            if is_last:  # last tile - flush whatever we have in the streak buffer
-                flush_streak()
-        else:  # the current tile is black
+        else:  # the current tile is black, so whatever streak we had has ended
             flush_streak()
+
+        coordinate_to_check[0] += direction[0]
+        coordinate_to_check[1] += direction[1]
+        in_bounds = is_within_bounds(coordinate_to_check)
+
+    flush_streak()  # we've gone out of bounds, flush whatever was left in the streak buffer
+
+
+
+    # for current in range_to_check:
+    #     tile_to_check = BOARD[index][current] if vertical else BOARD[current][index]
+    #
+    #     # check if it's the last piece in a row or column (which always breaks the streak)
+    #     is_last = (current == BOARD_HEIGHT - 1) if vertical else (current == BOARD_WIDTH - 1)
+    #
+    #     if tile_to_check.color != BLACK:
+    #         if current_color is None or current_color != tile_to_check.color:  # color does not match the previous one
+    #             flush_streak()
+    #             current_color = tile_to_check.color
+    #         current_streak.append(tile_to_check)
+    #
+    #         if is_last:  # last tile - flush whatever we have in the streak buffer
+    #             flush_streak()
+    #     else:  # the current tile is black
+    #         flush_streak()
 
 
 def sort_blocks_vertically(block_list):
@@ -531,8 +568,22 @@ def move_blocks_down(block_list):
             collision_occured = True
             BLOCKS_TO_BE_FIXATED.append(block)
             block['stopped'] = True
+
+            # collect the furthest points south on the board which are diagonal to this one
+            block_coordinate = [block['column'], block['row']]
+            diag_point_west = find_furthest_diagonal_point(block_coordinate, (-1, 1))
+            diag_point_east = find_furthest_diagonal_point(block_coordinate, (1, 1))
+
+            # piggy backing off block functions here, but we're not interested in the color
+            if not is_in_block_list(DIRTY_DIAG_NE, diag_point_west):
+                add_block_descriptor(DIRTY_DIAG_NE, BLACK, diag_point_west[0], diag_point_west[1])
+
+            if not is_in_block_list(DIRTY_DIAG_NW, diag_point_east):
+                add_block_descriptor(DIRTY_DIAG_NW, BLACK, diag_point_east[0], diag_point_east[1])
+
             if block['row'] not in DIRTY_ROWS:
                 DIRTY_ROWS.append(block['row'])
+
             if block['column'] not in DIRTY_COLUMNS:
                 DIRTY_COLUMNS.append(block['column'])
 
@@ -543,7 +594,8 @@ def move_blocks_down(block_list):
 
 def update_board():
     # 1: update falling blocks
-    global TILES_TO_BE_RESET, FALLING_BLOCKS, CONTROLLED_BLOCKS, DIRTY_COLUMNS, DIRTY_ROWS, BLOCKS_TO_BE_FIXATED
+    global TILES_TO_BE_RESET, FALLING_BLOCKS, CONTROLLED_BLOCKS, DIRTY_COLUMNS, DIRTY_ROWS, \
+        DIRTY_DIAG_NE, DIRTY_DIAG_NW, BLOCKS_TO_BE_FIXATED
 
     move_blocks_down(FALLING_BLOCKS)
 
@@ -563,12 +615,20 @@ def update_board():
 
     # when things have stopped moving, mark matching block groups and remove them
     if not len(FALLING_BLOCKS):
+        for block in DIRTY_DIAG_NE:  # sweep from bottom to top left
+            mark_matches([block['column'], block['row']], (1, -1))
+
+        for block in DIRTY_DIAG_NW:  # sweep from bottom to top right
+            mark_matches([block['column'], block['row']], (-1, -1))
+
         for row in DIRTY_ROWS:
-            mark_matches(row, False)
+            mark_matches([0, row], (1, 0))  # sweep from left to right
 
         for column in DIRTY_COLUMNS:
-            mark_matches(column)
+            mark_matches([column, 0], (0, 1))  # sweep from top to bottom
 
+        DIRTY_DIAG_NE = []
+        DIRTY_DIAG_NW = []
         DIRTY_COLUMNS = []
         DIRTY_ROWS = []
 
