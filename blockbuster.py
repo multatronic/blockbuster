@@ -7,14 +7,16 @@ from random import randrange
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -------------------TERMINOLOGY---------------------
+
+# -----------------------------------------------------TERMINOLOGY------------------------------------------------------
 # TILE = A non-moving 'slot' on the game board, either black or colored in.
 # BOARD = A two-dimensional array of Tiles, describing the entire game space
 # BLOCK = A moving non-black rectangle. Turns into a tile when it stops moving (see fixate_blocks_on_board()).
 # PIECE = A collection of blocks which are controlled by the player
-# ---------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
-VERSION_NUMBER = '0.1.6'
+
+VERSION_NUMBER = '0.2.0'
 FAST_FORWARD_MODE = False
 DEBUG_MODE = False
 GAME_OVER = False
@@ -30,7 +32,7 @@ POINTS_PER_BLOCK = 5
 UPDATE_SPEED = 500  # update board every x milliseconds
 MULIGANS = 0  # number of times the player can generate a new 'next' piece (see also: spawn_new_piece())
 
-PIECE_POSITION = None  # top left coordinate of current piece array on the board
+PIECE_POSITION = [6, 0]  # top left coordinate of current piece array on the board
 BOARD = []
 PREVIEW_WINDOW = []
 
@@ -232,7 +234,7 @@ def increase_score(increase=0):
     global MULIGANS, SCORE, LEVEL, UPDATE_SPEED
     SCORE += increase
     SCORE += MULIGANS * 5
-    LEVEL = (SCORE // 200) + 1
+    LEVEL = (SCORE // 250) + 1
     UPDATE_SPEED = 500 - ((LEVEL // 5) * 25)
     if UPDATE_SPEED < 200:
         UPDATE_SPEED = 200
@@ -332,7 +334,7 @@ def spawn_area_available(template=None):
 
 def spawn_barricade():
     global BOARD_WIDTH, FALLING_BLOCKS, LEVEL
-    number_of_rows = 1 + (LEVEL // 20)  # add an extra barricade row every 20 levels
+    number_of_rows = 1 + (LEVEL // 40)  # add an extra barricade row every 30 levels
 
     for row in range(number_of_rows):
         # generate an array of random colors as wide as the game board
@@ -387,7 +389,7 @@ def generate_next_colorized_template():
     piece_template_index = randrange(0, len(TEMPLATES))
 
     # select a few random colors, allowing duplicates
-    chosen_colors = pick_random_colors(1 + (LEVEL // 5))
+    chosen_colors = pick_random_colors(1 + (LEVEL // 15))
 
     for row in PREVIEW_WINDOW:
         for column in row:
