@@ -2,7 +2,8 @@ import pygame
 import sys
 import logging
 from pygame.locals import *
-from random import randrange
+from random import randrange, random
+from .globals import *
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-VERSION_NUMBER = '0.2.0'
 FAST_FORWARD_MODE = False
 DEBUG_MODE = False
 GAME_OVER = False
@@ -24,11 +24,10 @@ GAME_PAUSED = False
 
 DISPLAY = None
 CLOCK = pygame.time.Clock()
-FPS = 60
 
 SCORE = 0
 LEVEL = 1
-POINTS_PER_BLOCK = 5
+
 UPDATE_SPEED = 500  # update board every x milliseconds
 MULIGANS = 0  # number of times the player can generate a new 'next' piece (see also: spawn_new_piece())
 
@@ -46,21 +45,8 @@ BLOCKS_TO_BE_FIXATED = []  # list of blocks which have stopped moving and will b
 DIRTY_ROWS = []  # list of rows which need to be checked for matches
 DIRTY_COLUMNS = []  # list of columns which need to be checked for matches
 DIRTY_DIAG_NE = []  # coordinates which will be checked diagonally in north-east direction
-DIRTY_DIAG_NW = [] # coordinates which will be checked diagonally in north-west direction
+DIRTY_DIAG_NW = []  # coordinates which will be checked diagonally in north-west direction
 
-# layout variables
-BLOCK_SIZE = 20  # block size in pixels
-BOARD_HEIGHT = 20  # board height in blocks
-BOARD_WIDTH = 16  # board width in blocks
-PREVIEW_HEIGHT = 3  # preview window height in blocks
-PREVIEW_WIDTH = 3  # preview window widht in blocks
-MARGIN_LEFT = 10  # space between left board border and window border
-MARGIN_TOP = 10  # space between top board border and window border
-MARGIN_BOTTOM = 10  # space between bottom board border and window border
-MARGIN_RIGHT = PREVIEW_WIDTH * BLOCK_SIZE  # space between right preview window border and window border
-WINDOW_HEIGHT = (BLOCK_SIZE * BOARD_HEIGHT) + MARGIN_BOTTOM + MARGIN_TOP
-WINDOW_WIDTH = (BLOCK_SIZE * (BOARD_WIDTH + PREVIEW_WIDTH)) + MARGIN_LEFT + MARGIN_RIGHT
-PREVIEW_WINDOW_OFFSET = MARGIN_LEFT + (BOARD_WIDTH * BLOCK_SIZE) + 20
 BIG_FONT, SMALL_FONT = None, None
 CURRENT_FADEOUT_VALUE = 2  # current width of the fadeout rectangle
 
@@ -68,36 +54,7 @@ HIGH_SCORES = []
 LOWEST_HIGH_SCORE = None
 LAST_BARRICADE_LEVEL = 0  # the last level when a barricade was spawned
 
-
-BLACK = (0, 0, 0)
-COLORS = [
-    (255, 0, 0),
-    (0, 255, 0),
-    (0, 0, 255),
-    (255, 255, 0)
-]
-
-TEMPLATES = (
-    (
-        (0, 1, 1),
-        (0, 1, 0),
-        (0, 1, 0)
-    ),
-    (
-        (0, 1, 0),
-        (1, 1, 1)
-    ),
-    (
-        (1, 1, 0),
-        (0, 1, 1)
-    ),
-    (
-        (1, 1),
-        (1, 1)
-    )
-)
-
-# the colorized template is a copy of a single template from the list above
+# the colorized template is a copy of a single template
 # where every 1 has been replaced with a color value
 
 # when a piece is rotated, what is actually happening is that this matrix is
@@ -124,6 +81,16 @@ def add_block_descriptor(block_list, color, column, row):
         'column': column,
         'row': row
     })
+
+
+def is_in_tile_list(tile_list, tile_to_check):
+    '''Determine wether a coordinate is found within a given list of tile objects.'''
+    result = False
+    for tile in tile_list:
+        if tile.column == tile_to_check.column and tile.row == tile_to_check.row:
+            result = True
+            break
+    return result
 
 
 def is_in_block_list(block_list, coordinate):
@@ -375,6 +342,11 @@ def pick_random_colors(amount=1, allow_duplicates=True):
         color_accepted = False
         while not color_accepted:
             random_color = COLORS[randrange(0, len(COLORS))]
+
+            # 5 percent chance of getting the white color
+            if random() <= 0.05:
+                random_color = WHITE
+
             if allow_duplicates or random_color not in result:
                 result.append(random_color)
                 color_accepted = True
@@ -481,7 +453,8 @@ def render():
     if DEBUG_MODE and is_within_bounds(PIECE_POSITION):
         spawn_tile = BOARD[PIECE_POSITION[0]][PIECE_POSITION[1]]
         pygame.draw.rect(DISPLAY, (255, 255, 255), spawn_tile.rect, 2)
-
+        for tile in FADING_TILES:
+            pygame.draw.rect(DISPLAY, (255, 255, 255), tile.rect, 2)
     if GAME_OVER:
         draw_text('GAME OVER')
     elif GAME_PAUSED:
@@ -498,59 +471,64 @@ def stop_game():
 
 
 def mark_matches(starting_point=0, direction=(1, 0)):
-    '''Check for grouping of four in a given direction.'''
+    """Check for grouping of four in a given direction."""
     global BOARD
-    current_color = None
     current_streak = []
+    # remember the last checked tile in case we need to use it as a starting point
+    # for a reverse sweep
+    last_tile_checked = None
 
-    def flush_streak():
-        global TILES_TO_BE_RESET, FADING_TILES
+    def flush_streak(current_color):
+        global FADING_TILES
         nonlocal current_streak
-        if len(current_streak) > 3:
-            FADING_TILES += current_streak
+        if len(current_streak) > 3 and current_color is not None:
+            for tile in current_streak:
+                if not is_in_tile_list(FADING_TILES, tile):
+                    FADING_TILES.append(tile)
         current_streak = []
 
-    # sweep from top to bottom or left to right
-    # range_to_check = range(BOARD_HEIGHT) if vertical else range(BOARD_WIDTH)
+    def run_scan(scan_starting_point, scan_direction):
+        nonlocal last_tile_checked
+        current_streak_color = None
+        wildcard_encountered = False
 
-    coordinate_to_check = starting_point[:]
-    in_bounds = is_within_bounds(coordinate_to_check)
-    while in_bounds:
-        tile_to_check = BOARD[coordinate_to_check[0]][coordinate_to_check[1]]
-
-        if tile_to_check.color != BLACK:
-            if current_color is None or current_color != tile_to_check.color:  # color does not match the previous one
-                flush_streak()
-                current_color = tile_to_check.color
-            current_streak.append(tile_to_check)
-
-        else:  # the current tile is black, so whatever streak we had has ended
-            flush_streak()
-
-        coordinate_to_check[0] += direction[0]
-        coordinate_to_check[1] += direction[1]
+        coordinate_to_check = list(scan_starting_point)
         in_bounds = is_within_bounds(coordinate_to_check)
 
-    flush_streak()  # we've gone out of bounds, flush whatever was left in the streak buffer
+        while in_bounds:
+            tile_to_check = BOARD[coordinate_to_check[0]][coordinate_to_check[1]]
+            last_tile_checked = (tile_to_check.column, tile_to_check.row)
 
+            if tile_to_check.color != BLACK:
+                if tile_to_check.color != WHITE:
+                    if current_streak_color is None:
+                        current_streak_color = tile_to_check.color
+                    elif current_streak_color != tile_to_check.color:
+                        flush_streak(current_streak_color)
+                        current_streak_color = tile_to_check.color
+                else:
+                    wildcard_encountered = True
 
+                current_streak.append(tile_to_check)
 
-    # for current in range_to_check:
-    #     tile_to_check = BOARD[index][current] if vertical else BOARD[current][index]
-    #
-    #     # check if it's the last piece in a row or column (which always breaks the streak)
-    #     is_last = (current == BOARD_HEIGHT - 1) if vertical else (current == BOARD_WIDTH - 1)
-    #
-    #     if tile_to_check.color != BLACK:
-    #         if current_color is None or current_color != tile_to_check.color:  # color does not match the previous one
-    #             flush_streak()
-    #             current_color = tile_to_check.color
-    #         current_streak.append(tile_to_check)
-    #
-    #         if is_last:  # last tile - flush whatever we have in the streak buffer
-    #             flush_streak()
-    #     else:  # the current tile is black
-    #         flush_streak()
+            else:  # the current tile is black, so whatever streak we had has ended
+                flush_streak(current_streak_color)
+                current_streak_color = None
+
+            coordinate_to_check[0] += scan_direction[0]
+            coordinate_to_check[1] += scan_direction[1]
+            in_bounds = is_within_bounds(coordinate_to_check)
+
+        flush_streak(current_streak_color)  # we've gone out of bounds, flush whatever was left in the streak buffer
+        return wildcard_encountered
+
+    # run the requested scan, if we encounter a wildcard run it again in the opposite direction
+    # so that we capture all possible match groupings
+    if run_scan(starting_point, direction):
+        reversed_direction = list(direction)
+        reversed_direction[0] *= -1
+        reversed_direction[1] *= -1
+        run_scan(last_tile_checked, reversed_direction)
 
 
 def sort_blocks_vertically(block_list):
@@ -571,17 +549,19 @@ def move_blocks_down(block_list):
             BLOCKS_TO_BE_FIXATED.append(block)
             block['stopped'] = True
 
-            # collect the furthest points south on the board which are diagonal to this one
+            # collect the furthest points on the board which are diagonal to this one
             block_coordinate = [block['column'], block['row']]
-            diag_point_west = find_furthest_diagonal_point(block_coordinate, (-1, 1))
-            diag_point_east = find_furthest_diagonal_point(block_coordinate, (1, 1))
+            diag_point_south_west = find_furthest_diagonal_point(block_coordinate, (-1, 1))
+            diag_point_south_east = find_furthest_diagonal_point(block_coordinate, (1, 1))
+            # diag_point_north_west = find_furthest_diagonal_point(block_coordinate, (-1, -1))
+            # diag_point_north_east = find_furthest_diagonal_point(block_coordinate, (1, -1))
 
             # piggy backing off block functions here, but we're not interested in the color
-            if not is_in_block_list(DIRTY_DIAG_NE, diag_point_west):
-                add_block_descriptor(DIRTY_DIAG_NE, BLACK, diag_point_west[0], diag_point_west[1])
+            if not is_in_block_list(DIRTY_DIAG_NE, diag_point_south_west):
+                add_block_descriptor(DIRTY_DIAG_NE, BLACK, diag_point_south_west[0], diag_point_south_west[1])
 
-            if not is_in_block_list(DIRTY_DIAG_NW, diag_point_east):
-                add_block_descriptor(DIRTY_DIAG_NW, BLACK, diag_point_east[0], diag_point_east[1])
+            if not is_in_block_list(DIRTY_DIAG_NW, diag_point_south_east):
+                add_block_descriptor(DIRTY_DIAG_NW, BLACK, diag_point_south_east[0], diag_point_south_east[1])
 
             if block['row'] not in DIRTY_ROWS:
                 DIRTY_ROWS.append(block['row'])
@@ -593,11 +573,10 @@ def move_blocks_down(block_list):
     block_list[:] = [block for block in block_list if 'stopped' not in block]
     return collision_occured
 
-
 def update_board():
     # 1: update falling blocks
     global TILES_TO_BE_RESET, FALLING_BLOCKS, CONTROLLED_BLOCKS, DIRTY_COLUMNS, DIRTY_ROWS, \
-        DIRTY_DIAG_NE, DIRTY_DIAG_NW, BLOCKS_TO_BE_FIXATED
+        DIRTY_DIAG_NE, DIRTY_DIAG_NW, DIRTY_DIAG_SE, DIRTY_DIAG_SW, BLOCKS_TO_BE_FIXATED
 
     move_blocks_down(FALLING_BLOCKS)
 
@@ -616,6 +595,8 @@ def update_board():
     fixate_blocks_on_board()
 
     # when things have stopped moving, mark matching block groups and remove them
+    # the mark matches function will automatically perform a scan in the opposite direction
+    # if it encounters a wildcard block (because this block may be part of several colors group at the same time)
     if not len(FALLING_BLOCKS):
         for block in DIRTY_DIAG_NE:  # sweep from bottom to top left
             mark_matches([block['column'], block['row']], (1, -1))
@@ -715,5 +696,4 @@ def main():
         render()
         CLOCK.tick(FPS)
 
-if __name__ == '__main__':
-    main()
+main()
