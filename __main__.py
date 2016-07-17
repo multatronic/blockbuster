@@ -1,7 +1,7 @@
 import pygame
 import logging
 from renderer import *
-from game_state import *
+from main_menu_state import *
 from globals import *
 from state import *
 
@@ -18,18 +18,6 @@ def save_high_scores():
             record = '{0}-{1}\n'.format(entry[0], entry[1])
             file.write(record)
 
-def load_high_scores():
-    '''Load the high score entries from disk.'''
-    result = []
-    try:
-        with open('scores', 'r') as file:
-            for line in file:
-                result.append(line.split('-'))
-    except FileNotFoundError:
-        logger.info('No high score file was found')
-
-    return result
-
 pygame.init()
 logging.basicConfig(level=logging.INFO)
 
@@ -38,9 +26,7 @@ logger = logging.getLogger(__name__)
 renderer = Renderer(logger)
 stateManager = StateManager(logger, renderer)
 
-high_scores = load_high_scores()
-
-stateManager.push_state(GameState(high_scores))
+stateManager.push_state(MainMenuState())
 
 while stateManager.update(clock.get_time()):
     renderer.update()

@@ -8,9 +8,10 @@ from random import randrange, random
 from globals import *
 
 # -----------------------------------------------------TERMINOLOGY------------------------------------------------------
-# TILE = A non-moving 'slot' on the game board, either black or colored in.
+# TILE = A non-moving 'slot' on the game board, holds pygame.rect information
 # BOARD = A two-dimensional array of Tiles, describing the entire game space
-# BLOCK = A moving non-black rectangle. Turns into a tile when it stops moving (see fixate_blocks_on_board()).
+# COLOR_GRID = A copy of the board, which holds color information - this is used to check for groupings of colors
+# BLOCK (DESCRIPTOR) = A small dictionary object containing a row, column and color.
 # PIECE = A collection of blocks which are controlled by the player
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -234,12 +235,11 @@ class GameState(state.State):
 
 
     def spawn_barricade(self, rows=None):
-        global BOARD_WIDTH
-        number_of_rows = 1 + (self.level // 50) if rows is None else rows  # add an extra barricade row every 50 levels
+        number_of_rows = 2 + (self.level // 50) if rows is None else rows  # add an extra barricade row every 50 levels
 
         for row in range(number_of_rows):
             # generate an array of random colors as wide as the game board
-            chosen_colors = self.pick_random_colors(BOARD_WIDTH)
+            chosen_colors = self.pick_random_colors(BOARD_WIDTH, False)
             for column in range(BOARD_WIDTH):
                 self.add_block_descriptor(self.falling_blocks, chosen_colors[column], column, row)
 
@@ -266,24 +266,31 @@ class GameState(state.State):
             self.generate_controlled_blocks_from_colorized_template()
 
 
-    def pick_random_colors(self, amount=1, allow_duplicates=True):
+    def pick_random_colors(self, amount=1, allow_streaks=True):
         global COLORS
         # select a few random colors
         result = []
 
+        latest_color = None
+        color_streak_count = 0
         for i in range(amount):
             color_accepted = False
             while not color_accepted:
                 random_color = COLORS[randrange(0, len(COLORS))]
 
                 # 5 percent chance of getting the white color
-                if random() <= 0.05:
+                if allow_streaks and random() <= 0.05:
                     random_color = WHITE
 
-                if allow_duplicates or random_color not in result:
+                if random_color != latest_color:
+                    color_streak_count = 0
+                    latest_color = random_color
+                else:
+                    color_streak_count += 1
+
+                if allow_streaks or color_streak_count < 3:
                     result.append(random_color)
                     color_accepted = True
-
         return result
 
 
@@ -529,7 +536,7 @@ class GameState(state.State):
     def update(self, elapsed_time):
         for event in pygame.event.get():
             if event.type == QUIT:
-                self.state_manager.pop_state()
+                self.state_manager.show_menu()
             elif event.type == KEYDOWN:
                 if self.game_over:
                     self.state_manager.pop_state()
@@ -545,7 +552,7 @@ class GameState(state.State):
                 elif event.key == K_UP:
                     self.rotate_piece()
                 elif event.key == K_ESCAPE:
-                    self.state_manager.pop_state()
+                    self.state_manager.show_menu()
                 elif event.key == K_p:
                     self.game_paused = not self.game_paused
                 elif event.key == K_RCTRL:

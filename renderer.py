@@ -26,6 +26,29 @@ class Renderer:
         self.draw_rect(rect, BLACK, 1)  # draw a black border on it
 
     # todo generate surface once and store it instead of doing it every update tick
+    def draw_centered_text(self, text, y_pos=None, small=False):
+        '''Draw some text (small or large) on screen.'''
+        text_surface = None
+
+        if small:
+            text_surface = self.small_font.render(text, True, (200, 200, 200))
+        else:
+            text_surface = self.big_font.render(text, True, (200, 200, 200))
+
+        text_rect = text_surface.get_rect()
+
+        if y_pos is None:
+            y_pos = WINDOW_HEIGHT / 2
+
+        # if no position was given, center text on board
+        position = [WINDOW_WIDTH / 2, y_pos]
+        position[0] -= text_surface.get_width() / 2
+        position[1] -= text_surface.get_height() / 2
+
+        text_rect.topleft = position
+        self.display.blit(text_surface, text_rect)
+        return text_surface
+
     def draw_text(self, text, position=None, small=False):
         '''Draw some text (small or large) on screen.'''
         text_surface = None
