@@ -24,7 +24,8 @@ class HowToPlayState(state.State):
 
     def render(self):
         # blank out the screen
-        self.renderer.fill(BLACK)
+        self.renderer.draw_block_background()
+        self.renderer.draw_splash_background()
 
         # draw the preview window
         line_offset = WINDOW_HEIGHT / 2 - 100

@@ -5,6 +5,7 @@ import sys
 # import logging
 from pygame.locals import *
 from random import randrange, random
+from high_scores_state import HighScoresState
 from globals import *
 
 # -----------------------------------------------------TERMINOLOGY------------------------------------------------------
@@ -65,6 +66,11 @@ class GameState(state.State):
         self.lowest_high_score = None
         self.last_barricade_level = 0  # the last level when a barricade was spawned
         self.number_of_spawned_pieces = 0
+
+        for score in self.high_scores:
+            as_int = int(score[0])
+            if self.lowest_high_score == None or as_int < self.lowest_high_score:
+                self.lowest_high_score = as_int
 
         # the colorized template is a copy of a single template
         # where every 1 has been replaced with a color value
@@ -239,7 +245,7 @@ class GameState(state.State):
 
         for row in range(number_of_rows):
             # generate an array of random colors as wide as the game board
-            chosen_colors = self.pick_random_colors(BOARD_WIDTH, False)
+            chosen_colors = self.renderer.pick_random_colors(BOARD_WIDTH, False)
             for column in range(BOARD_WIDTH):
                 self.add_block_descriptor(self.falling_blocks, chosen_colors[column], column, row)
 
@@ -252,9 +258,10 @@ class GameState(state.State):
             self.generate_controlled_blocks_from_colorized_template()
             self.muligans = 5  # reset muligans
         else:
-            self.save_high_scores()
+            # self.save_high_scores()
             self.game_over = True
-
+            if self.lowest_high_score is None or self.lowest_high_score <= self.score:
+                self.state_manager.show_score_entry(self.high_scores, [self.score, self.level])
 
     def rotate_piece(self):
         # global self.colorized_template
@@ -265,42 +272,13 @@ class GameState(state.State):
             self.colorized_template = rotated_matrix
             self.generate_controlled_blocks_from_colorized_template()
 
-
-    def pick_random_colors(self, amount=1, allow_streaks=True):
-        global COLORS
-        # select a few random colors
-        result = []
-
-        latest_color = None
-        color_streak_count = 0
-        for i in range(amount):
-            color_accepted = False
-            while not color_accepted:
-                random_color = COLORS[randrange(0, len(COLORS))]
-
-                # 5 percent chance of getting the white color
-                if allow_streaks and random() <= 0.05:
-                    random_color = WHITE
-
-                if random_color != latest_color:
-                    color_streak_count = 0
-                    latest_color = random_color
-                else:
-                    color_streak_count += 1
-
-                if allow_streaks or color_streak_count < 3:
-                    result.append(random_color)
-                    color_accepted = True
-        return result
-
-
     def generate_next_colorized_template(self):
         self.next_colorized_template = []
 
         piece_template_index = randrange(0, len(TEMPLATES))
 
         # select a few random colors, allowing duplicates
-        chosen_colors = self.pick_random_colors(1 + (self.level // 15))
+        chosen_colors = self.renderer.pick_random_colors(1 + (self.level // 15))
 
         for row in self.preview_window:
             for column in row:
@@ -338,7 +316,7 @@ class GameState(state.State):
         # increase the current level based on the number of spawned pieces
         self.number_of_spawned_pieces += 1
         self.level = (self.number_of_spawned_pieces // 20) + 1
-        self.update_speed = 500 - ((self.level // 5) * 25)
+        self.update_speed = 500 - ((self.level // 3) * 50)
         if self.update_speed < 200:
             self.update_speed = 200
 
@@ -536,14 +514,14 @@ class GameState(state.State):
     def update(self, elapsed_time):
         for event in pygame.event.get():
             if event.type == QUIT:
-                self.state_manager.show_menu()
+                self.state_manager.stop_game()
             elif event.type == KEYDOWN:
-                if self.game_over:
-                    self.state_manager.pop_state()
-                elif event.key == K_DOWN:
+                if event.key == K_DOWN:
                     self.fast_forward_mode = True
             elif event.type == KEYUP:
-                if event.key == K_DOWN:
+                if self.game_over:
+                    self.state_manager.shut_down_game()
+                elif event.key == K_DOWN:
                     self.fast_forward_mode = False
                 elif event.key == K_LEFT:
                     self.move_piece((-1, 0))

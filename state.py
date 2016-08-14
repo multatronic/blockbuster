@@ -41,6 +41,10 @@ class StateManager:
         self.state_stack.append(state)
         state.enter()
 
+    def clear_stack(self):
+        while self.get_active_state():
+            self.pop_state()
+
     def pop_state(self):
         active_state = self.get_active_state()
         if active_state:
