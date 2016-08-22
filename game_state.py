@@ -33,6 +33,7 @@ class GameState(state.State):
         self.debug_mode = False
         self.game_over = False
         self.game_paused = False
+        self.music_paused = False
         self.last_update = 0
 
         self.color_grid = []
@@ -530,6 +531,7 @@ class GameState(state.State):
                 elif event.key == K_UP:
                     self.rotate_piece()
                 elif event.key == K_ESCAPE:
+                    self.toggle_music()
                     self.state_manager.show_menu()
                 elif event.key == K_p:
                     self.game_paused = not self.game_paused
@@ -563,6 +565,16 @@ class GameState(state.State):
         self.logger.info('Enter: GameState')
         self.generate_next_colorized_template()
         self.spawn_barricade(3)
+        pygame.mixer.music.load('assets/Odyssey.ogg')
+        pygame.mixer.music.play()
+        self.music_paused = False
+
+    def toggle_music(self):
+        if self.music_paused:
+            pygame.mixer.music.unpause()
+        else:
+            pygame.mixer.music.pause()
+        self.music_paused = not self.music_paused
 
     def exit(self):
         self.logger.info('Exit: GameState')

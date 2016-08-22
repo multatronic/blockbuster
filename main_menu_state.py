@@ -76,6 +76,7 @@ class MainMenuState(state.State):
 
     def continue_game(self):
         """Continue playing the game (i.e. hide the main menu)"""
+        self.active_game.toggle_music()
         self.showing_menu = False
 
     def shut_down_game(self):
