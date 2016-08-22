@@ -38,15 +38,24 @@ class MainMenuState(state.State):
             self.renderer.draw_block_background()
 
             # draw a splash background
-            self.renderer.draw_splash_background()
+            splash = self.renderer.draw_splash_background()
 
-            # draw the preview window
-            option_offset = WINDOW_HEIGHT / 2 - 100
+            # Collect all the menu option texts, we will send them as an array to the
+            # renderer so that it can calculate the total text dimensions.
+            texts_to_render = []
             for index in range(0, len(self.menu_options)):
-                text_to_render = self.menu_options[index][0]
-                if index == self.selected_option:
-                    text_to_render = '> ' + text_to_render
-                option_offset += self.renderer.draw_centered_text(text_to_render, option_offset).get_height()
+                current_text = self.menu_options[index][0]
+                texts_to_render.append(current_text)
+            text_surfaces = self.renderer.draw_centered_text(texts_to_render, render_surface=splash)
+
+            # Add the selected option cursor as a prefix
+            # (done here to prevent the centering code from sliding the options around when a prefix is added)
+            text_rect_to_prefix = text_surfaces[self.selected_option]
+            prefix_offset = self.renderer.get_distance_from_center(list(text_rect_to_prefix.center))
+            prefix_offset[1] *= -1
+            prefix_offset[1] += text_rect_to_prefix.height / 2
+            prefix_offset[0] = -80
+            self.renderer.draw_centered_text('>', offset=prefix_offset, render_surface=splash)
 
     def start_game(self):
         self.set_up_game()

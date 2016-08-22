@@ -42,7 +42,8 @@ class Renderer:
                     rect = pygame.Rect(current_position, (BLOCK_SIZE, BLOCK_SIZE))
                     self.background_block_grid[row].append({
                         'color': current_color,
-                        'rect': rect
+                        'rect': rect,
+                        'obfuscated': False
                     })
                     current_position[0] += BLOCK_SIZE
                 current_position[0] = 0
@@ -50,7 +51,8 @@ class Renderer:
 
         for row in self.background_block_grid:
             for block in row:
-                self.draw_block(block['rect'], block['color'])
+                if not block['obfuscated']:
+                    self.draw_block(block['rect'], block['color'])
 
     def draw_splash_background(self, outer_margin=30, inner_margin=10, border_color=(255, 255, 255)):
         width = WINDOW_WIDTH - outer_margin
@@ -65,40 +67,75 @@ class Renderer:
         self.draw_rect(background_rect, BLACK)
         self.draw_rect(background_rect, border_color, 3)
         self.draw_rect(expanded_area, border_color, 3)
+
+        # If we have a background block grid, mark the obscured blocks
+        if len(self.background_block_grid):
+            for row in self.background_block_grid:
+                for block_desc in row:
+                    if background_rect.contains(block_desc['rect']):
+                        block_desc['obfuscated'] = True
         return background_rect
 
-    # todo generate surface once and store it instead of doing it every update tick
-    def draw_centered_text(self, text, y_pos=None, small=False, surface=None):
-        '''Draw some text (small or large) on screen.'''
-        text_surface = None
-
-        if small:
-            text_surface = self.small_font.render(text, True, (200, 200, 200))
-        else:
-            text_surface = self.big_font.render(text, True, (200, 200, 200))
-
-        text_rect = text_surface.get_rect()
-
+    def get_distance_from_center(self, position=(0, 0), surface=None):
         if surface is None:
             surface = self.display.get_rect()
+        center = surface.center
+        result = [0, 0]
+        result[0] = center[0] - position[0]
+        result[1] = center[1] - position[1]
+        return result
 
-        x_offset = surface.left
-        y_offset = surface.top
+    # todo generate surface once and store it instead of doing it every update tick
+    def draw_centered_text(self, text, offset=(0, 0), small=False, render_surface=None):
+        """Draw some text (small or large) on screen."""
 
-        if y_pos is None:
-            y_pos = surface.height / 2
+        text_surfaces = []
 
-        # if no position was given, center text on board
-        position = [surface.width / 2, y_pos]
-        position[0] -= (text_surface.get_width() / 2) - x_offset
-        position[1] -= (text_surface.get_height() / 2) - y_offset
+        # Turn single string into list of strings.
+        if isinstance(text, str):
+            text = [text]
 
-        text_rect.topleft = position
-        self.display.blit(text_surface, text_rect)
-        return text_surface
+        # Generate the text surfaces, keeping track of how much vertical and horizontal space it occupies.
+        total_text_dimensions = [0, 0]
+        for line in text:
+            if small:
+                current_surface = self.small_font.render(line, True, (200, 200, 200))
+            else:
+                current_surface = self.big_font.render(line, True, (200, 200, 200))
+
+            text_surfaces.append(current_surface)
+            text_rect = current_surface.get_rect()
+
+            total_text_dimensions[1] += text_rect.height
+            if text_rect.width > total_text_dimensions[0]:
+                total_text_dimensions[0] = text_rect.width
+
+        # If no surface to center on was passed, use the entire display.
+        if render_surface is None:
+            render_surface = self.display.get_rect()
+
+        # Determine the starting point by finding the surface center and
+        # offsetting vertically by half the text height .
+        surface_center_x = (render_surface.width / 2) + render_surface.left
+        surface_center_y = (render_surface.height / 2) + render_surface.top
+        total_text_height_half = total_text_dimensions[1] / 2
+
+        text_position = [surface_center_x + offset[0],
+                         (surface_center_y - total_text_height_half) + offset[1]]
+
+        result = []
+        # Render each line, adjusting the vertical text position.
+        for text_to_render in text_surfaces:
+            text_rect = text_to_render.get_rect()
+            text_rect.center = text_position
+            text_position[1] += text_rect.height
+            result.append(text_rect)
+            self.display.blit(text_to_render, text_rect)
+
+        return result
 
     def draw_text_table(self, table_area=None, headers=(), entries=()):
-        '''Draw a table of text on screen.'''
+        """Draw a table of text on screen."""
         if table_area is None:
             table_area = pygame.Rect((0, 0), (WINDOW_WIDTH, WINDOW_HEIGHT))
 

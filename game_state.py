@@ -542,7 +542,7 @@ class GameState(state.State):
 
         # if nothing is moving on the board either spawn a new piece or a barricade (depending on the current level)
         if not (len(self.falling_blocks) or len(self.controlled_blocks)):
-            if self.level - self.last_barricade_level == 5:
+            if self.level - self.last_barricade_level == 4:
                 self.last_barricade_level = self.level
                 self.spawn_barricade()
             else:
