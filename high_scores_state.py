@@ -38,11 +38,7 @@ class HighScoresState(state.State):
             self.renderer.draw_text('name: ' + self.entered_name)
         else:
             if len(self.high_scores):
-                # offset = WINDOW_HEIGHT / 2 - 100
                 self.renderer.draw_text_table(splash_rect, ('SCORE', 'LEVEL', 'PLAYER'), self.high_scores)
-                # for record in self.high_scores:
-                #     text_to_render = 'SCORE {0} - LEVEL: {1} - PLAYER: {2}'.format(record[0], record[1], record[2])
-                #     offset += self.renderer.draw_centered_text(text_to_render, offset).get_height()
             else:
                 self.renderer.draw_centered_text('no scores yet, be the first!', surface=splash_rect)
 

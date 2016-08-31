@@ -14,13 +14,8 @@ class HowToPlayState(state.State):
             'Match 4 or more colors in any direction.',
             'White blocks will match any other color.',
             '',
-            'Arrow left/right/up to move the piece.',
-            'Arrow down to fast forward.',
-            '',
-            'Right Ctrl to swap the next piece.',
-            '(this will lower your score)',
-            '',
-            'Esc takes you back to the menu.',
+            'Swap pieces to find the best fit.',
+            '(this will slightly lower your score)',
             '', '',
             'Try not to suck.'
         ]
@@ -29,11 +24,6 @@ class HowToPlayState(state.State):
         # blank out the screen
         self.renderer.draw_block_background()
         splash = self.renderer.draw_splash_background()
-
-        # draw the preview window
-        # line_offset = WINDOW_HEIGHT / 2 - 100
-        # for line in self.lines:
-        #     line_offset += self.renderer.draw_centered_text(line, line_offset).get_height()
         self.renderer.draw_centered_text(self.lines, render_surface=splash)
 
     def update(self, elapsed_time):

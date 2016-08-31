@@ -139,6 +139,7 @@ class Renderer:
         if table_area is None:
             table_area = pygame.Rect((0, 0), (WINDOW_WIDTH, WINDOW_HEIGHT))
 
+        line_rects = []
         number_of_columns = 0
 
         # calculate the height of the rows (max entry height + margin)
@@ -180,17 +181,27 @@ class Renderer:
             current_draw_position[0] += column_width
 
         # render the table entries
+        header_count = len(headers)
         for entry in entries:
             # reset the draw cursor
             current_draw_position[0] = column_width_half
             current_draw_position[1] += row_height
 
-            for column_entry in entry:
+            # Construct a rect enclosing the entire line (we return this to allow the caller to do formatting).
+            line_rects.append(pygame.Rect(current_draw_position[0], current_draw_position[1],
+                                          column_width * len(entry), row_height))
+
+            for index, column_entry in enumerate(entry):
+                # If headers were supplied we want to truncate columns that
+                # were not given a header.
+                if header_count and index >= header_count:
+                    break
+
                 column_entry = str(column_entry)
                 text_size = self.small_font.size(column_entry)
                 text_width_offset = text_size[0] / 2
 
-                # offset the current draw position to center the text
+                # Offset the current draw position to center the text.
                 offset_draw_position = current_draw_position[:]
                 offset_draw_position[0] -= text_width_offset
 
@@ -199,6 +210,7 @@ class Renderer:
                 current_draw_position[0] += column_width
             current_draw_position[0] += row_height
             remaining_vertical_space -= row_height
+        return line_rects
 
 
     def draw_text(self, text, position=None, small=False):
@@ -220,6 +232,7 @@ class Renderer:
 
         text_rect.topleft = position
         self.display.blit(text_surface, text_rect)
+        return text_rect
 
     def pick_random_colors(self, amount=1, allow_streaks=True):
         """Generate an array of random colors (we placed this function in renderer because we also want to use

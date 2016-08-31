@@ -8,6 +8,7 @@ from globals import *
 from game_state import *
 from how_to_play_state import *
 from high_scores_state import *
+from controls_state import *
 
 class MainMenuState(state.State):
     def load_high_scores(self):
@@ -21,10 +22,34 @@ class MainMenuState(state.State):
             self.logger.info('No high score file was found')
         return result
 
+    def load_controls(self):
+        '''Load the controls settings from disk.'''
+        result = {}
+        try:
+            with open('controls', 'r') as file:
+                for line in file:
+                    split_line = line.split('|')
+                    result[split_line[0]] = int(split_line[1])
+        except FileNotFoundError:
+            self.logger.info('No controls file was found')
+            result = {
+                'back_button': K_ESCAPE,
+                'pause_button': K_p,
+                'move_left': K_LEFT,
+                'move_right': K_RIGHT,
+                'rotate': K_UP,
+                'fast_forward': K_DOWN,
+                'swap_piece': K_RCTRL,
+                'select_menu_option': K_RETURN
+            }
+
+        return result
+
     def __init__(self):
         super().__init__()
         self.selected_option = 0
         self.high_scores = []
+        self.controls = None
         self.menu_options = []
         self.showing_menu = False
         self.active_game = None
@@ -63,6 +88,7 @@ class MainMenuState(state.State):
             ['continue', self.continue_game],
             ['restart', self.restart_game],
             ['what do?', self.show_help],
+            ['controls', self.show_controls],
             ['high scores', self.show_scores],
             ['exit', self.stop_game]
         ]
@@ -88,6 +114,7 @@ class MainMenuState(state.State):
         self.menu_options = [
             ['start game', self.start_game],
             ['what do?', self.show_help],
+            ['controls', self.show_controls],
             ['high scores', self.show_scores],
             ['exit', self.stop_game]
         ]
@@ -95,8 +122,7 @@ class MainMenuState(state.State):
     def set_up_game(self):
         """Start a new game instance."""
         self.shut_down_game()
-
-        substate = GameState(self.high_scores)
+        substate = GameState(self.high_scores, self.controls)
         substate.inject_services(self.renderer, self.logger, self)
         substate.enter()
         self.active_game = substate
@@ -112,6 +138,9 @@ class MainMenuState(state.State):
     def show_scores(self):
         self.state_manager.push_state(HighScoresState(self.high_scores))
 
+    def show_controls(self):
+        self.state_manager.push_state(ControlsState(self.controls))
+
     def stop_game(self):
         self.state_manager.pop_state()
 
@@ -123,7 +152,7 @@ class MainMenuState(state.State):
                 if event.type == QUIT:
                     self.state_manager.pop_state()
                 elif event.type == KEYUP:
-                    if event.key == K_ESCAPE:
+                    if event.key == self.controls['back_button']:
                         self.state_manager.pop_state()
                     elif event.key == K_DOWN:
                         # increase selected option with wrap around
@@ -133,13 +162,14 @@ class MainMenuState(state.State):
                         self.selected_option -= 1
                         if self.selected_option < 0:
                             self.selected_option = len(self.menu_options) - 1
-                    elif event.key == K_RETURN:
+                    elif event.key == self.controls['select_menu_option']:
                         # fire the callback related to the currently selected option
                         self.menu_options[self.selected_option][1]()
 
     def enter(self):
         self.logger.info('Enter: MainMenu')
         self.high_scores = self.load_high_scores()
+        self.controls = self.load_controls()
 
     def exit(self):
         self.logger.info('Exit: MainMenu')

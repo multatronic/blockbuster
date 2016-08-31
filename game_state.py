@@ -27,8 +27,9 @@ class GameState(state.State):
             self.rect = pygame.Rect(rect_offset[0] + MARGIN_LEFT + (BLOCK_SIZE * x),
                                     rect_offset[1] + MARGIN_TOP + (BLOCK_SIZE * y), BLOCK_SIZE, BLOCK_SIZE)
 
-    def __init__(self, high_scores):
+    def __init__(self, high_scores, controls):
         super().__init__()
+        self.controls = controls
         self.fast_forward_mode = False
         self.debug_mode = False
         self.game_over = False
@@ -242,6 +243,7 @@ class GameState(state.State):
 
 
     def spawn_barricade(self, rows=None):
+        self.fast_forward_mode = False
         number_of_rows = 2 + (self.level // 50) if rows is None else rows  # add an extra barricade row every 50 levels
 
         for row in range(number_of_rows):
@@ -258,6 +260,7 @@ class GameState(state.State):
             self.generate_next_colorized_template()
             self.generate_controlled_blocks_from_colorized_template()
             self.muligans = 5  # reset muligans
+            self.fast_forward_mode = False
         else:
             # self.save_high_scores()
             self.game_over = True
@@ -279,7 +282,7 @@ class GameState(state.State):
         piece_template_index = randrange(0, len(TEMPLATES))
 
         # select a few random colors, allowing duplicates
-        chosen_colors = self.renderer.pick_random_colors(1 + (self.level // 15))
+        chosen_colors = self.renderer.pick_random_colors(1 + (self.level // 10))
 
         for row in self.preview_window:
             for column in row:
@@ -517,25 +520,25 @@ class GameState(state.State):
             if event.type == QUIT:
                 self.state_manager.stop_game()
             elif event.type == KEYDOWN:
-                if event.key == K_DOWN:
+                if event.key == self.controls['fast_forward']:
                     self.fast_forward_mode = True
             elif event.type == KEYUP:
                 if self.game_over:
                     self.state_manager.shut_down_game()
-                elif event.key == K_DOWN:
+                elif event.key == self.controls['fast_forward']:
                     self.fast_forward_mode = False
-                elif event.key == K_LEFT:
+                elif event.key == self.controls['move_left']:
                     self.move_piece((-1, 0))
-                elif event.key == K_RIGHT:
+                elif event.key == self.controls['move_right']:
                     self.move_piece((1, 0))
-                elif event.key == K_UP:
+                elif event.key == self.controls['rotate']:
                     self.rotate_piece()
-                elif event.key == K_ESCAPE:
+                elif event.key == self.controls['back_button']:
                     self.toggle_music()
                     self.state_manager.show_menu()
-                elif event.key == K_p:
+                elif event.key == self.controls['pause_button']:
                     self.game_paused = not self.game_paused
-                elif event.key == K_RCTRL:
+                elif event.key == self.controls['swap_piece']:
                     if self.muligans > 0:
                         self.muligans -= 1
                         self.generate_next_colorized_template()
