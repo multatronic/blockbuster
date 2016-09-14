@@ -5,11 +5,13 @@ class State:
         self.renderer = None
         self.state_manager = None
         self.logger = None
+        self.config = None
 
-    def inject_services(self, renderer, logger, state_manager):
+    def inject_services(self, renderer, logger, state_manager, config):
         self.renderer = renderer
         self.state_manager = state_manager
         self.logger = logger
+        self.config = config
 
     def render(self):
         self.logger.info('state render called')
@@ -25,9 +27,10 @@ class State:
 
 
 class StateManager:
-    def __init__(self, logger, renderer):
+    def __init__(self, logger, renderer, configuration):
         self.logger = logger
         self.renderer = renderer
+        self.config = configuration
         self.state_stack = []
 
     def get_active_state(self):
@@ -37,7 +40,7 @@ class StateManager:
         return self.state_stack[stack_length - 1]
 
     def push_state(self, state):
-        state.inject_services(self.renderer, self.logger, self)
+        state.inject_services(self.renderer, self.logger, self, self.config)
         self.state_stack.append(state)
         state.enter()
 

@@ -7,31 +7,17 @@ from pygame.locals import *
 from globals import *
 
 class ControlsState(state.State):
-    def save_controls(self):
-        """Write the controls to disk."""
-        # now write the scores to a file
-        with open('controls', 'w') as file:
-            # Sort so the settings don't jump around when visiting the control page
-            sorted_keys = sorted(self.controls.keys())
-            for key in sorted_keys:
-                record = '{0}|{1}\n'.format(key, self.controls[key])
-                file.write(record)
-
-    def __init__(self, controls):
+    def __init__(self):
         super().__init__()
-        self.controls = controls
         self.highlighted_control = 0
-        # Translate the controls into human readable format
         self.translated_controls = []
-        self.translate_keys()
-
         self.showing_entry_menu = False
         self.show_invalid_key_message = False
 
     def translate_keys(self):
         """Prepare the controls dictionary for rendering (e.g. sorting and removing underscores)."""
         self.translated_controls = []
-        for action, key in self.controls.items():
+        for action, key in self.config.get_controls().items():
             entry = []
             translated_action = action.replace('_', ' ')
             translated_key = pygame.key.name(int(key))
@@ -78,15 +64,15 @@ class ControlsState(state.State):
                         selected_action = self.translated_controls[self.highlighted_control][2]
 
                         key_already_bound = False
-                        for action, key in self.controls.items():
+                        for action, key in self.config.get_controls().items():
                             if selected_action != action and key == event.key:
                                 key_already_bound = True
                                 break
 
                         if not key_already_bound:
                             # Set it as the new control.
-                            self.controls[selected_action] = event.key
-                            self.save_controls()
+                            self.config.set_key(selected_action, event.key)
+                            self.config.save_controls()
                             self.translate_keys()
                             self.showing_entry_menu = False
                             self.show_invalid_key_message = False
@@ -108,6 +94,8 @@ class ControlsState(state.State):
 
     def enter(self):
         self.logger.info('Enter: Controls')
+        # Translate the controls into human readable format
+        self.translate_keys()
 
     def exit(self):
         self.logger.info('Exit: Controls')

@@ -4,15 +4,33 @@ from math import ceil
 from random import randrange, random
 
 class Renderer:
-    def __init__(self, logger):
-        pygame.display.set_caption('BLOCK BUSTER (v%s)' % VERSION_NUMBER)
-        self.display = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        self.big_font = pygame.font.Font(None, 30)
-        self.small_font = pygame.font.Font(None, 20)
+    def __init__(self, logger, config):
+        self.config = config
         self.background_block_grid = []
+        self.colors = [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255)
+        ]
+
+        self.resize()
 
     def update(self):
         pygame.display.update()
+
+    def resize(self):
+        pygame.display.set_caption('BLOCK BUSTER (v%s)' % self.config.get_const('version_number'))
+        self.display = pygame.display.set_mode(self.config.get_setting('window_size'))
+        self.config.determine_size_variables()
+        if self.background_block_grid:
+            self.background_block_grid = []
+
+        if self.config.get('window_size')[0] == 450:
+            self.big_font = pygame.font.Font(None, 30)
+            self.small_font = pygame.font.Font(None, 20)
+        else:
+            self.big_font = pygame.font.Font(None, 60)
+            self.small_font = pygame.font.Font(None, 40)
 
     def fill(self, color):
         self.display.fill(color)
@@ -25,29 +43,32 @@ class Renderer:
 
     def draw_block(self, rect, color):
         self.draw_rect(rect, color)  # fill a colored rect
-        self.draw_rect(rect, BLACK, 1)  # draw a black border on it
+        self.draw_rect(rect, self.config.get_const('black'), self.config.get('block_border_size'))  # draw a black border on it
 
     # todo generate rects once instead of for every draw call
     def draw_block_background(self):
         # initialize a background block grid if none is present
         if not len(self.background_block_grid):
-            number_of_columns = ceil(WINDOW_WIDTH / BLOCK_SIZE)
-            number_of_rows = ceil(WINDOW_HEIGHT / BLOCK_SIZE)
+            window_size = self.config.get('window_size')
+            block_size = self.config.get('block_size')
+
+            number_of_columns = ceil(window_size[0] / block_size)
+            number_of_rows = ceil(window_size[1] / block_size)
 
             current_position = [0, 0]
             for row in range(number_of_rows):
                 color_row = self.pick_random_colors(number_of_columns)
                 self.background_block_grid.append([])
                 for current_color in color_row:
-                    rect = pygame.Rect(current_position, (BLOCK_SIZE, BLOCK_SIZE))
+                    rect = pygame.Rect(current_position, (block_size, block_size))
                     self.background_block_grid[row].append({
                         'color': current_color,
                         'rect': rect,
                         'obfuscated': False
                     })
-                    current_position[0] += BLOCK_SIZE
+                    current_position[0] += block_size
                 current_position[0] = 0
-                current_position[1] += BLOCK_SIZE
+                current_position[1] += block_size
 
         for row in self.background_block_grid:
             for block in row:
@@ -55,16 +76,17 @@ class Renderer:
                     self.draw_block(block['rect'], block['color'])
 
     def draw_splash_background(self, outer_margin=30, inner_margin=10, border_color=(255, 255, 255)):
-        width = WINDOW_WIDTH - outer_margin
-        height = WINDOW_HEIGHT - outer_margin
+        window_size = self.config.get('window_size')
+        width = window_size[0] - outer_margin
+        height = window_size[1] - outer_margin
         background_rect = pygame.Rect((0, 0), (width, height))
-        background_rect.center = (WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
+        background_rect.center = (window_size[0] / 2, window_size[1] / 2)
         expanded_area = pygame.Rect(background_rect)
         expanded_area.width += inner_margin
         expanded_area.height += inner_margin
         expanded_area.center = background_rect.center
 
-        self.draw_rect(background_rect, BLACK)
+        self.draw_rect(background_rect, self.config.get('black'))
         self.draw_rect(background_rect, border_color, 3)
         self.draw_rect(expanded_area, border_color, 3)
 
@@ -137,7 +159,7 @@ class Renderer:
     def draw_text_table(self, table_area=None, headers=(), entries=()):
         """Draw a table of text on screen."""
         if table_area is None:
-            table_area = pygame.Rect((0, 0), (WINDOW_WIDTH, WINDOW_HEIGHT))
+            table_area = pygame.Rect((0, 0), self.config.get('window_size'))
 
         line_rects = []
         number_of_columns = 0
@@ -246,11 +268,11 @@ class Renderer:
         for i in range(amount):
             color_accepted = False
             while not color_accepted:
-                random_color = COLORS[randrange(0, len(COLORS))]
+                random_color = self.colors[randrange(0, len(self.colors))]
 
                 # 5 percent chance of getting the white color
                 if allow_streaks and random() <= 0.05:
-                    random_color = WHITE
+                    random_color = self.config.get_const('white')
 
                 if random_color != latest_color:
                     color_streak_count = 0

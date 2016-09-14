@@ -20,16 +20,43 @@ from globals import *
 class GameState(state.State):
     class Tile:
         """A tile represents a slot on the board"""
-        def __init__(self, x, y, rect_offset=(0, 0)):
-            # self.color = BLACK
+        def __init__(self, x, y, rect_offset=(0, 0), config=None):
+            block_size = config.get('block_size')
             self.column = x
             self.row = y
-            self.rect = pygame.Rect(rect_offset[0] + MARGIN_LEFT + (BLOCK_SIZE * x),
-                                    rect_offset[1] + MARGIN_TOP + (BLOCK_SIZE * y), BLOCK_SIZE, BLOCK_SIZE)
+            self.rect = pygame.Rect(rect_offset[0] + config.get('margin_left') + (block_size * x),
+                                    rect_offset[1] + config.get('margin_top') + (block_size * y), block_size,
+                                    block_size)
 
-    def __init__(self, high_scores, controls):
+    def __init__(self, high_scores):
         super().__init__()
-        self.controls = controls
+        self.templates = [
+            [
+                (0, 1, 1),
+                (0, 1, 0),
+                (0, 1, 0)
+            ],
+            [
+                (0, 1, 0),
+                (1, 1, 1)
+            ],
+            [
+                (1, 1, 0),
+                (0, 1, 1)
+            ],
+            [
+                (1, 1),
+                (1, 1)
+            ]
+        ]
+
+        self.points_per_block = 5
+        self.board_height = 20  # board height in blocks
+        self.board_width = 16  # board width in blocks
+        self.preview_height = 3  # preview window height in blocks
+        self.preview_width = 3  # preview window width in blocks
+
+
         self.fast_forward_mode = False
         self.debug_mode = False
         self.game_over = False
@@ -38,11 +65,7 @@ class GameState(state.State):
         self.last_update = 0
 
         self.color_grid = []
-        self.board = [[GameState.Tile(x, y) for y in range(BOARD_HEIGHT)] for x in range(BOARD_WIDTH)]
-        self.preview_window = [[GameState.Tile(x, y, (PREVIEW_WINDOW_OFFSET, 0)) for y in range(PREVIEW_HEIGHT)]
-                                for x in range(PREVIEW_HEIGHT)]
 
-        self.board_border = pygame.Rect(MARGIN_LEFT, MARGIN_TOP, (BOARD_WIDTH * BLOCK_SIZE), (BOARD_HEIGHT * BLOCK_SIZE))
 
         self.score = 0
         self.level = 1
@@ -131,7 +154,7 @@ class GameState(state.State):
 
     def is_within_bounds(self, coordinate):
         '''Is coordinate within the bounds of the game board?'''
-        return 0 <= coordinate[0] < BOARD_WIDTH and 0 <= coordinate[1] < BOARD_HEIGHT
+        return 0 <= coordinate[0] < self.board_width and 0 <= coordinate[1] < self.board_height
 
 
     def detach_block(self, block):
@@ -152,8 +175,6 @@ class GameState(state.State):
 
         # empty tile?
         return not self.is_in_block_list(self.fixated_blocks, coordinate)
-        # self.board[coordinate[0]][coordinate[1]].color == BLACK
-
 
     def find_furthest_diagonal_point(self, starting_point, direction):
         current = starting_point[:]
@@ -167,13 +188,16 @@ class GameState(state.State):
         return last_valid_coordinate
 
     def increase_fadeout_value(self, last_tick):
-        if self.current_fadeout_value >= BLOCK_SIZE:
+        if self.current_fadeout_value >= self.config.get('block_size'):
             self.current_fadeout_value = 0
             self.tiles_to_be_reset = list(self.fading_tiles)
             self.fading_tiles.clear()
             self.remove_marked_tiles()
 
-        self.current_fadeout_value += (last_tick / 1000) * 3
+        growth_factor = 3
+        if self.config.get('window_size')[0] == 900:
+            growth_factor *= 2
+        self.current_fadeout_value += (last_tick / 1000) * growth_factor
 
     def increase_score(self, increase=0):
         '''Increase the player score and adjust difficulty.'''
@@ -181,14 +205,13 @@ class GameState(state.State):
         self.score += self.muligans * 5
 
     def remove_marked_tiles(self):
-        global POINTS_PER_BLOCK
         lowest_vacated_slots = {}
 
         score_increase = 0
         # blank out the tiles and remember what column they are in. Also remember the lowest row
         # (= highest coordinate) in this column where a tile was blanked out.
         for block in self.tiles_to_be_reset:
-            score_increase += POINTS_PER_BLOCK
+            score_increase += self.points_per_block
             column = block['column']
             row = block['row']
             if column not in lowest_vacated_slots or lowest_vacated_slots[column] < row:
@@ -241,16 +264,20 @@ class GameState(state.State):
                     break
         return all_tiles_available
 
-
     def spawn_barricade(self, rows=None):
+        if len(self.falling_blocks) or len(self.controlled_blocks):
+            return
+
         self.fast_forward_mode = False
         number_of_rows = 2 + (self.level // 50) if rows is None else rows  # add an extra barricade row every 50 levels
 
         for row in range(number_of_rows):
             # generate an array of random colors as wide as the game board
-            chosen_colors = self.renderer.pick_random_colors(BOARD_WIDTH, False)
-            for column in range(BOARD_WIDTH):
+            chosen_colors = self.renderer.pick_random_colors(self.board_width, False)
+            for column in range(self.board_width):
                 self.add_block_descriptor(self.falling_blocks, chosen_colors[column], column, row)
+
+        self.last_barricade_level = self.level
 
 
     def spawn_new_piece(self):
@@ -270,6 +297,8 @@ class GameState(state.State):
     def rotate_piece(self):
         # global self.colorized_template
         rotated_matrix = list(self.colorized_template)
+        if not len(rotated_matrix):
+            return
         self.rotate_matrix(rotated_matrix)
 
         if self.spawn_area_available(rotated_matrix):
@@ -279,20 +308,20 @@ class GameState(state.State):
     def generate_next_colorized_template(self):
         self.next_colorized_template = []
 
-        piece_template_index = randrange(0, len(TEMPLATES))
+        piece_template_index = randrange(0, len(self.templates))
 
         # select a few random colors, allowing duplicates
         chosen_colors = self.renderer.pick_random_colors(1 + (self.level // 10))
 
         for row in self.preview_window:
             for column in row:
-                column.color = BLACK
+                column.color = self.config.get_const('black')
 
-        for row in range(len(TEMPLATES[piece_template_index])):
+        for row in range(len(self.templates[piece_template_index])):
             self.next_colorized_template.append([])
-            for column in range(len(TEMPLATES[piece_template_index][row])):
-                generated_color = BLACK
-                if TEMPLATES[piece_template_index][row][column] == 1:
+            for column in range(len(self.templates[piece_template_index][row])):
+                generated_color = self.config.get_const('black')
+                if self.templates[piece_template_index][row][column] == 1:
                     generated_color = chosen_colors[randrange(0, len(chosen_colors))]
                 self.next_colorized_template[row].append(generated_color)
                 self.preview_window[column][row].color = generated_color
@@ -309,7 +338,8 @@ class GameState(state.State):
 
         for row in range(number_of_rows):
             for column in range(number_of_columns):
-                if self.colorized_template[row][column] != BLACK and self.is_vacant_tile(spawn_coord):
+                if self.colorized_template[row][column] != self.config.get_const('black') and \
+                        self.is_vacant_tile(spawn_coord):
                     self.add_block_descriptor(self.controlled_blocks, self.colorized_template[row][column],
                                          spawn_coord[0], spawn_coord[1])
 
@@ -346,10 +376,12 @@ class GameState(state.State):
 
                 # piggy backing off block functions here, but we're not interested in the color
                 if not self.is_in_block_list(self.dirty_diag_ne, diag_point_south_west):
-                    self.add_block_descriptor(self.dirty_diag_ne, BLACK, diag_point_south_west[0], diag_point_south_west[1])
+                    self.add_block_descriptor(self.dirty_diag_ne, self.config.get_const('black'),
+                                              diag_point_south_west[0], diag_point_south_west[1])
 
                 if not self.is_in_block_list(self.dirty_diag_nw, diag_point_south_east):
-                    self.add_block_descriptor(self.dirty_diag_nw, BLACK, diag_point_south_east[0], diag_point_south_east[1])
+                    self.add_block_descriptor(self.dirty_diag_nw, self.config.get_const('black'),
+                                              diag_point_south_east[0], diag_point_south_east[1])
 
                 if block['row'] not in self.dirty_rows:
                     self.dirty_rows.append(block['row'])
@@ -389,8 +421,8 @@ class GameState(state.State):
                 tile_to_check = self.color_grid[coordinate_to_check[0]][coordinate_to_check[1]]
                 last_tile_checked = coordinate_to_check[:]
 
-                if tile_to_check != BLACK:
-                    if tile_to_check != WHITE:
+                if tile_to_check != self.config.get_const('black'):
+                    if tile_to_check != self.config.get_const('white'):
                         if current_streak_color is None:
                             current_streak_color = tile_to_check
                         elif current_streak_color != tile_to_check:
@@ -426,7 +458,7 @@ class GameState(state.State):
             self.renderer.draw_block(rect, block_to_render['color'])
 
         # blank out the screen
-        self.renderer.fill(BLACK)
+        self.renderer.fill(self.config.get_const('black'))
 
         # draw the preview window
         for row in range(len(self.preview_window)):
@@ -451,17 +483,21 @@ class GameState(state.State):
         fadeout_rect = pygame.Rect(0, 0, self.current_fadeout_value, self.current_fadeout_value)
         for block in self.fading_tiles:
             fadeout_rect.center = self.board[block['column']][block['row']].rect.center
-            self.renderer.draw_rect(fadeout_rect, BLACK)
+            self.renderer.draw_rect(fadeout_rect, self.config.get_const('black'))
 
         # draw the board border (grey, 5 pixels thick)
         self.renderer.draw_rect(self.board_border, (100, 100, 100), 5)
 
         # render stats
-        top_margin = MARGIN_TOP + (PREVIEW_HEIGHT * BLOCK_SIZE) + 10
-        self.renderer.draw_text('level: %s' % self.level, (PREVIEW_WINDOW_OFFSET, top_margin), True)
-        self.renderer.draw_text('score: %s' % self.score, (PREVIEW_WINDOW_OFFSET, top_margin + 15), True)
-        self.renderer.draw_text('speed: %ss' % (self.update_speed / 1000), (PREVIEW_WINDOW_OFFSET, top_margin + 30), True)
-        self.renderer.draw_text('mulligans: %s' % self.muligans, (PREVIEW_WINDOW_OFFSET, top_margin + 45), True)
+        offset_growth = 15
+        if self.config.get('window_size')[0] == 900:
+            offset_growth = 30
+
+        top_margin = self.config.get('margin_top') + (self.preview_height * self.config.get('block_size')) + 10
+        self.renderer.draw_text('level: %s' % self.level, (self.preview_window_offset, top_margin), True)
+        self.renderer.draw_text('score: %s' % self.score, (self.preview_window_offset, top_margin + offset_growth), True)
+        self.renderer.draw_text('speed: %ss' % (self.update_speed / 1000), (self.preview_window_offset, top_margin + (offset_growth * 2)), True)
+        self.renderer.draw_text('swaps left: %s' % self.muligans, (self.preview_window_offset, top_margin + (offset_growth * 3)), True)
 
         if self.game_over:
             self.renderer.draw_text('GAME OVER')
@@ -492,7 +528,7 @@ class GameState(state.State):
         self.remove_marked_tiles()
 
     def collect_color_matches(self):
-            self.color_grid = [[BLACK for row in range(BOARD_HEIGHT)] for column in range(BOARD_WIDTH)]
+            self.color_grid = [[self.config.get_const('black') for row in range(self.board_height)] for column in range(self.board_width)]
 
             # now fill in the fixated colors
             for block in self.fixated_blocks:
@@ -516,29 +552,37 @@ class GameState(state.State):
             self.dirty_rows = []
 
     def update(self, elapsed_time):
+        # Resize the game screen or adjust the music settings if applicable
+        if self.config.get('recently_resized'):
+            self.set_up_game()
+            self.config.set_const('recently_resized', False)
+        if self.config.get('music_settings_adjusted'):
+            self.check_music_settings()
+            self.config.set_const('music_settings_adjusted', False)
+
         for event in pygame.event.get():
             if event.type == QUIT:
                 self.state_manager.stop_game()
             elif event.type == KEYDOWN:
-                if event.key == self.controls['fast_forward']:
+                if event.key == self.config.get_key('fast_forward'):
                     self.fast_forward_mode = True
             elif event.type == KEYUP:
                 if self.game_over:
                     self.state_manager.shut_down_game()
-                elif event.key == self.controls['fast_forward']:
+                elif event.key == self.config.get_key('fast_forward'):
                     self.fast_forward_mode = False
-                elif event.key == self.controls['move_left']:
+                elif event.key == self.config.get_key('move_left'):
                     self.move_piece((-1, 0))
-                elif event.key == self.controls['move_right']:
+                elif event.key == self.config.get_key('move_right'):
                     self.move_piece((1, 0))
-                elif event.key == self.controls['rotate']:
+                elif event.key == self.config.get_key('rotate'):
                     self.rotate_piece()
-                elif event.key == self.controls['back_button']:
-                    self.toggle_music()
+                elif event.key == self.config.get_key('back_button'):
+                    self.pause_music()
                     self.state_manager.show_menu()
-                elif event.key == self.controls['pause_button']:
+                elif event.key == self.config.get_key('pause_button'):
                     self.game_paused = not self.game_paused
-                elif event.key == self.controls['swap_piece']:
+                elif event.key == self.config.get_key('swap_piece'):
                     if self.muligans > 0:
                         self.muligans -= 1
                         self.generate_next_colorized_template()
@@ -548,7 +592,6 @@ class GameState(state.State):
         # if nothing is moving on the board either spawn a new piece or a barricade (depending on the current level)
         if not (len(self.falling_blocks) or len(self.controlled_blocks)):
             if self.level - self.last_barricade_level == 4:
-                self.last_barricade_level = self.level
                 self.spawn_barricade()
             else:
                 self.spawn_new_piece()
@@ -566,18 +609,66 @@ class GameState(state.State):
 
     def enter(self):
         self.logger.info('Enter: GameState')
+        self.set_up_game()
+
+    def set_up_game(self):
+        self.logger.info('Setting up the game.')
+        pygame.mixer.music.load('assets/Odyssey.ogg')
+        self.determine_size_variables()
+        self.check_music_settings()
         self.generate_next_colorized_template()
         self.spawn_barricade(3)
-        pygame.mixer.music.load('assets/Odyssey.ogg')
-        pygame.mixer.music.play()
         self.music_paused = False
+
+    def check_music_settings(self):
+        if self.config.get('background_music') != 'Off':
+            if self.config.get('background_music') == 'loop':
+                self.start_music()
+            else:
+                self.start_music(False)
+        else:
+            self.stop_music()
+
+    def determine_size_variables(self):
+        margin_left = self.config.get('margin_left')
+        margin_top = self.config.get('margin_top')
+
+        self.preview_window_offset = margin_left + (self.board_width * self.config.get('block_size')) + (margin_left * 2)
+        self.block_size = self.config.get('block_size')
+
+        self.board = [[GameState.Tile(x, y, config=self.config) for y in range(self.board_height)] for x in range(self.board_width)]
+        self.preview_window = [[GameState.Tile(x, y, (self.preview_window_offset, 0), self.config) for y in
+                                range(self.preview_height)] for x in range(self.preview_height)]
+
+        self.board_border = pygame.Rect(margin_left, margin_top, (self.board_width * self.block_size),
+                                        (self.board_height * self.block_size))
+
+
+    def stop_music(self):
+        self.music_paused = True
+        pygame.mixer.music.stop()
+
+    def start_music(self, loop=False):
+        self.music_paused = False
+        if loop:
+            pygame.mixer.music.play(-1)
+        else:
+            pygame.mixer.music.play()
+
+
+    def unpause_music(self):
+        self.music_paused = False
+        pygame.mixer.music.unpause()
+
+    def pause_music(self):
+        self.music_paused = True
+        pygame.mixer.music.pause()
 
     def toggle_music(self):
         if self.music_paused:
-            pygame.mixer.music.unpause()
+            self.unpause_music()
         else:
-            pygame.mixer.music.pause()
-        self.music_paused = not self.music_paused
+            self.pause_music()
 
     def exit(self):
         self.logger.info('Exit: GameState')
